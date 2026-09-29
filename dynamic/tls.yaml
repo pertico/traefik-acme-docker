@@ -1,0 +1,21 @@
+accessLog: {}
+tcp:
+  routers:
+    k8s-passthrough-router:
+      # Inspecciona el SNI del paquete TLS sin descifrarlo
+      rule: "HostSNIRegexp(`^.+\\.k8s\\.localhost$`)"
+      entryPoints:
+        - websecure
+      service: k8s-traefik-backend-tcp
+      tls:
+        passthrough: true # <-- Pasa el tráfico cifrado directo a Kind
+  services:
+    k8s-traefik-backend-tcp:
+      loadBalancer:
+        servers:
+          # Reenvía los bytes TCP crudos al puerto 9443 (HTTPS) de Kind
+          - address: "172.21.0.1:9443"
+tls:
+  certificates:
+    - certFile: /certs/localhost.crt
+      keyFile:  /certs/localhost.key

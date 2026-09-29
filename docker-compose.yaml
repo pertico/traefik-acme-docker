@@ -1,0 +1,90 @@
+services:
+  proxy:
+    image: "traefik:v3.7"
+    container_name: "${COMPOSE_PROJECT_NAME:-proxy}-traefik"
+    restart: unless-stopped
+#    environment:
+#      - KUBECONFIG=/etc/traefik/kubeconfig # Traefik leerá automáticamente este archivo
+#     - LEGO_CA_CERTIFICATES=/etc/ssl/certs/localhost_playground_Root_CA.crt
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.dashboard.rule=Host(`traefik.localhost`)"
+      - "traefik.http.routers.dashboard.service=api@internal"
+      - "traefik.http.routers.dashboard.entrypoints=websecure"
+      - "traefik.http.routers.dashboard.tls.certresolver=localacme"
+      - io.portainer.accesscontrol.public
+      - "prometheus-scrape=true"
+      - "prometheus-port=8080"
+    security_opt:
+      - no-new-privileges:true
+    command:
+      - "--accesslog=true"
+      - "--api.insecure=true"
+      - "--providers.docker=true"
+      - "--providers.docker.exposedbydefault=false"
+      - "--providers.docker.network=proxy-net"
+      - "--providers.file.filename=/dynamic/tls.yaml"  
+      - "--entrypoints.web.address=:80"
+      - "--entrypoints.web.http.redirections.entrypoint.to=websecure"
+      - "--entrypoints.web.http.redirections.entrypoint.scheme=https"
+      - "--entrypoints.web.http.redirections.entrypoint.permanent=true"
+      - "--entrypoints.websecure.address=:443"
+      - "--entrypoints.websecure.http.tls=true"
+      - "--log.level=INFO"
+      - "--metrics.prometheus=true"
+      - "--certificatesresolvers.localacme.acme.caserver=https://step-ca:9000/acme/acme/directory"
+      - "--certificatesresolvers.localacme.acme.email=me@playground"
+      - "--certificatesresolvers.localacme.acme.httpchallenge=true"
+      - "--certificatesresolvers.localacme.acme.httpchallenge.entrypoint=web"
+      - "--certificatesresolvers.localacme.acme.storage=/letsencrypt/acme.json"
+    ports:
+      - "80:80"
+      - "443:443"
+    extra_hosts:
+      - "traefik.k8s.localhost:host-gateway"
+      - "host.containers.internal:host-gateway"      
+    volumes:
+      - "/var/run/docker.sock:/var/run/docker.sock:ro"
+      - "./dynamic:/dynamic:ro"
+      - "/etc/ssl/certs/ca-certificates.crt:/etc/ssl/certs/ca-certificates.crt:ro"
+      - "./certs:/certs:ro"
+      - acme-data:/letsencrypt
+      - "./config/kubeconfig:/etc/traefik/kubeconfig"
+    depends_on:
+      - step-ca
+  whoami:
+    image: "traefik/whoami"
+    restart: unless-stopped
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.whoami.rule=Host(`whoami.localhost`)"
+      - "traefik.http.routers.whoami.entrypoints=websecure"
+      - "traefik.http.routers.whoami.tls.certresolver=localacme"
+    depends_on:
+      - proxy
+  step-ca:
+    image: smallstep/step-ca:0.30.2
+    container_name: step-ca
+    hostname: step-ca
+    restart: unless-stopped
+    extra_hosts:
+      - "whoami.localhost:host-gateway"
+      - "traefik.localhost:host-gateway"
+      - "zabbix.localhost:host-gateway"
+      - "conjur.localhost:host-gateway"
+      - "traefik.k8s.localhost:172.21.0.1"
+      - "whoami.k8s.localhost:172.21.0.1"
+#   ports:
+#     - 9000:9000
+    volumes:
+      - step-ca-data:/home/step
+   
+volumes:
+  step-ca-data:
+    external: true
+  acme-data:
+
+networks:
+  default:
+    name: ${COMPOSE_PROJECT_NAME:-proxy}-net
+    driver: bridge 

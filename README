@@ -1,0 +1,29 @@
+# Traefik + ACME docker stack
+
+## Initialize Smallstep Online CA
+``` bash
+docker pull smallstep/step-cli:0.30.6
+docker volume create step-ca-data
+
+docker run -it --rm --name step-ca-init \
+  -v step-ca-data:/home/step \
+  -v ./config/certs:/tmp \
+  smallstep/step-cli:0.30.6 \
+    step ca init \
+      --deployment-type=standalone \
+      --name="playground Smallstep Online CA" \
+      --dns="step-ca,localhost,127.0.0.1" \
+      --address=":9000" \
+      --provisioner="me" \
+      --acme \
+      --root=<root_ca.crt> \
+      --key=<root_ca.key>
+```
+
+``` bash
+docker run -it --rm \
+  -v step-ca-data:/home/step \
+  alpine \
+    sh -c 'echo <password> > /home/step/secrets/password && \
+      chown 1000:1000 /home/step/secrets/password && chmod 600 /home/step/secrets/password'
+```
